@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/models.dart';
@@ -43,12 +44,16 @@ class ReaderPage extends StatefulWidget {
 class _ReaderPageState extends State<ReaderPage> {
   static const _modeKey = 'jm_reader_mode';
   static const _modeVersionKey = 'jm_reader_mode_version';
-  static const _modeVersion = 2;
-  static const _maxCachedPages = 24;
+  static const _modeVersion = 3;
+  static const _maxCachedPages = 40;
+  static const _prefetchBackPages = 8;
+  static const _prefetchForwardPages = 16;
+  static const _warmAheadPages = 3;
 
   final Map<int, Future<Uint8List>> _imageFutures = {};
   final LinkedHashMap<int, Uint8List> _imageCache = LinkedHashMap();
   final Map<int, double> _pageExtents = {};
+  final Set<int> _warmedImageIndexes = <int>{};
 
   ChapterData? _chapter;
   bool _loading = true;
@@ -89,8 +94,8 @@ class _ReaderPageState extends State<ReaderPage> {
       }
       var next = savedMode ?? ReaderMode.verticalScroll;
       if (savedVersion < _modeVersion &&
-          (saved == ReaderMode.leftToRight.value ||
-              saved == ReaderMode.rightToLeft.value)) {
+          savedMode != null &&
+          savedMode != ReaderMode.verticalScroll) {
         next = ReaderMode.verticalScroll;
       }
       await prefs.setInt(_modeVersionKey, _modeVersion);
@@ -168,6 +173,7 @@ class _ReaderPageState extends State<ReaderPage> {
     _imageFutures.clear();
     _imageCache.clear();
     _pageExtents.clear();
+    _warmedImageIndexes.clear();
   }
 
   void _scheduleChromeHide() {
@@ -192,6 +198,9 @@ class _ReaderPageState extends State<ReaderPage> {
   }
 
   double get _defaultPageExtent => MediaQuery.sizeOf(context).height * 0.9;
+
+  ScrollCacheExtent get _scrollCacheExtent =>
+      const ScrollCacheExtent.viewport(3.0);
 
   double _offsetFor(int index) {
     if (index <= 0) return 0;
@@ -229,6 +238,7 @@ class _ReaderPageState extends State<ReaderPage> {
       setState(() => _current = index);
     }
     _schedulePrefetch(index);
+    _warmNearbyImages();
   }
 
   Future<Uint8List> _imageAt(int index) {
@@ -245,6 +255,9 @@ class _ReaderPageState extends State<ReaderPage> {
         _imageFutures.remove(index);
         while (_imageCache.length > _maxCachedPages) {
           _imageCache.remove(_imageCache.keys.first);
+        }
+        if (index >= _current - 1 && index <= _current + _warmAheadPages) {
+          _warmImage(index, bytes);
         }
       },
       onError: (Object error, StackTrace stackTrace) {
@@ -291,18 +304,44 @@ class _ReaderPageState extends State<ReaderPage> {
 
   void _prefetchAround(int index) {
     if (_chapter == null || _imageCount == 0) return;
-    final start = (index - 4).clamp(0, _imageCount - 1);
-    final end = (index + 9).clamp(0, _imageCount - 1);
+    final start = index - _prefetchBackPages < 0
+        ? 0
+        : index - _prefetchBackPages;
+    final end = index + _prefetchForwardPages >= _imageCount
+        ? _imageCount - 1
+        : index + _prefetchForwardPages;
     for (var i = start; i <= end; i++) {
       _imageAt(i);
     }
+    _warmNearbyImages();
   }
 
   void _trimCache(int index) {
-    final lower = index - 8;
-    final upper = index + 22;
+    final lower = index - _prefetchBackPages * 2;
+    final upper = index + _prefetchForwardPages * 2 + 6;
     _imageCache.removeWhere((key, _) => key < lower || key > upper);
     _imageFutures.removeWhere((key, _) => key < lower || key > upper);
+  }
+
+  void _warmNearbyImages() {
+    final count = _imageCount;
+    if (count == 0) return;
+    final upper = _current + _warmAheadPages;
+    for (var i = _current - 1; i <= upper && i < count; i++) {
+      if (i < 0) continue;
+      final bytes = _imageCache[i];
+      if (bytes != null) _warmImage(i, bytes);
+    }
+  }
+
+  void _warmImage(int index, Uint8List bytes) {
+    if (!mounted || !_warmedImageIndexes.add(index)) return;
+    final provider = ResizeImage.resizeIfNeeded(
+      _cacheWidth,
+      null,
+      MemoryImage(bytes),
+    );
+    unawaited(precacheImage(provider, context));
   }
 
   void _retry(int index) {
@@ -579,6 +618,7 @@ class _ReaderPageState extends State<ReaderPage> {
           controller: _scrollController,
           itemCount: _imageCount + (_hasNextChapter ? 1 : 0),
           padding: const EdgeInsets.only(bottom: 120),
+          scrollCacheExtent: _scrollCacheExtent,
           itemBuilder: (context, index) {
             if (index == _imageCount) {
               return _EndCard(hasNext: true, onNext: _nextChapter);
