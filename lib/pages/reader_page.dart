@@ -191,8 +191,7 @@ class _ReaderPageState extends State<ReaderPage> {
     });
   }
 
-  double get _defaultPageExtent =>
-      MediaQuery.sizeOf(context).height * 0.9;
+  double get _defaultPageExtent => MediaQuery.sizeOf(context).height * 0.9;
 
   double _offsetFor(int index) {
     if (index <= 0) return 0;
@@ -239,16 +238,19 @@ class _ReaderPageState extends State<ReaderPage> {
     if (pending != null) return pending;
     final future = _fetchImage(index);
     _imageFutures[index] = future;
-    future.then<void>((bytes) {
-      if (!mounted) return;
-      _imageCache[index] = bytes;
-      _imageFutures.remove(index);
-      while (_imageCache.length > _maxCachedPages) {
-        _imageCache.remove(_imageCache.keys.first);
-      }
-    }, onError: (Object error, StackTrace stackTrace) {
-      if (mounted) _imageFutures.remove(index);
-    });
+    future.then<void>(
+      (bytes) {
+        if (!mounted) return;
+        _imageCache[index] = bytes;
+        _imageFutures.remove(index);
+        while (_imageCache.length > _maxCachedPages) {
+          _imageCache.remove(_imageCache.keys.first);
+        }
+      },
+      onError: (Object error, StackTrace stackTrace) {
+        if (mounted) _imageFutures.remove(index);
+      },
+    );
     return future;
   }
 
@@ -267,16 +269,12 @@ class _ReaderPageState extends State<ReaderPage> {
           name: item.name,
         )) {
       final seed = calcSeed(photoId, item.page);
-      try {
-        bytes = await decodeScrambledImage(
-          bytes,
-          photoId: photoId,
-          page: item.page,
-          seed: seed,
-        );
-      } catch (_) {
-        // Keep the original bytes when the scramble decoder fails.
-      }
+      bytes = await decodeScrambledImage(
+        bytes,
+        photoId: photoId,
+        page: item.page,
+        seed: seed,
+      );
     }
     return bytes;
   }
@@ -523,10 +521,7 @@ class _ReaderPageState extends State<ReaderPage> {
           AnimatedOpacity(
             duration: const Duration(milliseconds: 180),
             opacity: _showChrome ? 1 : 0,
-            child: IgnorePointer(
-              ignoring: !_showChrome,
-              child: _buildChrome(),
-            ),
+            child: IgnorePointer(ignoring: !_showChrome, child: _buildChrome()),
           ),
         ],
       ),
@@ -552,10 +547,7 @@ class _ReaderPageState extends State<ReaderPage> {
                 color: Colors.white38,
               ),
               const SizedBox(height: 10),
-              const Text(
-                '章节加载失败',
-                style: TextStyle(color: Colors.white70),
-              ),
+              const Text('章节加载失败', style: TextStyle(color: Colors.white70)),
               const SizedBox(height: 8),
               Text(
                 _error ?? '',
@@ -1079,10 +1071,7 @@ class _FullPageImage extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  '图片加载失败',
-                  style: TextStyle(color: Colors.white54),
-                ),
+                const Text('图片加载失败', style: TextStyle(color: Colors.white54)),
                 TextButton(onPressed: onRetry, child: const Text('重试')),
               ],
             ),
@@ -1127,10 +1116,7 @@ class _EndCard extends StatelessWidget {
             size: 34,
           ),
           const SizedBox(height: 10),
-          const Text(
-            '本话已读完',
-            style: TextStyle(color: Colors.white70),
-          ),
+          const Text('本话已读完', style: TextStyle(color: Colors.white70)),
           const SizedBox(height: 12),
           FilledButton.icon(
             onPressed: onNext,
