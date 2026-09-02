@@ -40,7 +40,7 @@ Future<Uint8List> decodeScrambledImage(
       format: ui.ImageByteFormat.rawStraightRgba,
     );
     if (pixels == null) return raw;
-    return compute(
+    final result = await compute(
       _computeDescramble,
       _DescrambleRequest(
         rgba: pixels.buffer.asUint8List(),
@@ -49,6 +49,7 @@ Future<Uint8List> decodeScrambledImage(
         seed: seed,
       ),
     );
+    return result;
   } finally {
     source.dispose();
     codec.dispose();
