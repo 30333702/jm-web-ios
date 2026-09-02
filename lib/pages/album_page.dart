@@ -90,13 +90,17 @@ class _AlbumPageState extends State<AlbumPage> {
   }
 
   void _openChapter(SeriesChapter chapter) {
+    final detail = _detail;
+    if (detail == null) return;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => ReaderPage(
           chapterId: chapter.id,
+          albumId: detail.id,
+          chapters: detail.series,
           title: chapter.name.isEmpty
-              ? (_detail?.name ?? '阅读')
-              : '${_detail?.name ?? ''} ${chapter.name}',
+              ? (detail.name.isEmpty ? '阅读' : detail.name)
+              : '${detail.name.isNotEmpty ? detail.name : '阅读'} ${chapter.name}',
         ),
       ),
     );

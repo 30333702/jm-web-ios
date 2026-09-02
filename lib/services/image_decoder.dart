@@ -1,28 +1,53 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-/// 按 jm 客户端算法把原图纵向分片并从底部反向重排为正常图片。
+import 'package:flutter/foundation.dart';
+
+class _ScrambleRequest {
+  const _ScrambleRequest({
+    required this.raw,
+    required this.photoId,
+    required this.page,
+    required this.seed,
+  });
+
+  final Uint8List raw;
+  final int photoId;
+  final String page;
+  final int seed;
+}
+
+/// Reorders the vertical slices of a JM image back to normal order.
+///
+/// The work happens in a background isolate so the reader UI stays responsive.
 Future<Uint8List> decodeScrambledImage(
   Uint8List raw, {
   required int photoId,
   required String page,
   required int seed,
-}) async {
-  final codec = await ui.instantiateImageCodec(raw);
+}) {
+  return compute(
+    _decodeScrambledIsolate,
+    _ScrambleRequest(raw: raw, photoId: photoId, page: page, seed: seed),
+  );
+}
+
+@pragma('vm:entry-point')
+Future<Uint8List> _decodeScrambledIsolate(_ScrambleRequest request) async {
+  final codec = await ui.instantiateImageCodec(request.raw);
   final frame = await codec.getNextFrame();
   final source = frame.image;
   try {
     final width = source.width;
     final height = source.height;
-    if (height <= 0 || width <= 0) return raw;
+    if (height <= 0 || width <= 0) return request.raw;
 
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     final paint = ui.Paint();
 
-    final remainder = height % seed;
-    for (var i = 0; i < seed; i++) {
-      var sliceHeight = height ~/ seed;
+    final remainder = height % request.seed;
+    for (var i = 0; i < request.seed; i++) {
+      var sliceHeight = height ~/ request.seed;
       var destY = sliceHeight * i;
       final sourceY = height - sliceHeight * (i + 1) - remainder;
       if (i == 0) {
@@ -53,7 +78,7 @@ Future<Uint8List> decodeScrambledImage(
     final output = await picture.toImage(width, height);
     try {
       final byteData = await output.toByteData(format: ui.ImageByteFormat.png);
-      if (byteData == null) return raw;
+      if (byteData == null) return request.raw;
       return byteData.buffer.asUint8List();
     } finally {
       output.dispose();
