@@ -378,6 +378,329 @@ class PagedAlbums {
   }
 }
 
+class UserProfile {
+  const UserProfile({
+    required this.uid,
+    required this.username,
+    this.nickname,
+    this.photo,
+    this.levelName,
+    this.level = 1,
+    this.coin = 0,
+    this.exp = 0,
+    this.nextLevelExp = 1,
+    this.expPercent = 0,
+    this.albumFavorites = 0,
+    this.albumFavoritesMax = 0,
+  });
+
+  final String uid;
+  final String username;
+  final String? nickname;
+  final String? photo;
+  final String? levelName;
+  final int level;
+  final int coin;
+  final int exp;
+  final int nextLevelExp;
+  final int expPercent;
+  final int albumFavorites;
+  final int albumFavoritesMax;
+
+  String get displayName =>
+      (nickname != null && nickname!.isNotEmpty) ? nickname! : username;
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    final next = _asInt(json['nextLevelExp']) ?? 1;
+    final exp = _asInt(json['exp']) ?? 0;
+    final percent = _asInt(json['expPercent']) ??
+        (next <= 0 ? 0 : (exp / next * 100).round());
+    return UserProfile(
+      uid: _asString(json['uid'] ?? json['id']),
+      username: _asString(json['username'] ?? json['loginname']),
+      nickname: json['nickname'] is String ? json['nickname'] as String : null,
+      photo: json['photo'] is String ? json['photo'] as String : null,
+      levelName: json['level_name'] is String
+          ? json['level_name'] as String
+          : null,
+      level: _asInt(json['level']) ?? 1,
+      coin: _asInt(json['coin']) ?? 0,
+      exp: exp,
+      nextLevelExp: next,
+      expPercent: percent,
+      albumFavorites: _asInt(json['album_favorites']) ?? 0,
+      albumFavoritesMax: _asInt(json['album_favorites_max']) ?? 0,
+    );
+  }
+}
+
+class PagedComments {
+  const PagedComments({
+    required this.items,
+    required this.total,
+    required this.hasMore,
+  });
+
+  final List<Comment> items;
+  final int total;
+  final bool hasMore;
+
+  factory PagedComments.fromJson(Map<String, dynamic> json) {
+    final raw = json['list'];
+    final items = <Comment>[];
+    if (raw is List) {
+      for (final item in raw) {
+        if (item is Map) {
+          items.add(Comment.fromJson(Map<String, dynamic>.from(item)));
+        }
+      }
+    }
+    final total = _asInt(json['total']) ?? items.length;
+    return PagedComments(
+      items: items,
+      total: total,
+      hasMore: items.length < total,
+    );
+  }
+}
+
+class Comment {
+  const Comment({
+    required this.id,
+    required this.content,
+    this.aid,
+    this.albumName,
+    this.name,
+    this.nickname,
+    this.username,
+    this.photo,
+    this.addTime,
+    this.likes = 0,
+    this.spoiler = false,
+    this.replies = const [],
+  });
+
+  final String id;
+  final String content;
+  final String? aid;
+  final String? albumName;
+  final String? name;
+  final String? nickname;
+  final String? username;
+  final String? photo;
+  final String? addTime;
+  final int likes;
+  final bool spoiler;
+  final List<Comment> replies;
+
+  String get author => nickname ?? username ?? '匿名';
+
+  factory Comment.fromJson(Map<String, dynamic> json) {
+    final rawReplies = json['replys'] ?? json['replies'] ?? json['children'];
+    final replies = <Comment>[];
+    if (rawReplies is List) {
+      for (final item in rawReplies) {
+        if (item is Map) {
+          replies.add(Comment.fromJson(Map<String, dynamic>.from(item)));
+        }
+      }
+    }
+    final rawSpoiler = json['spoiler'];
+    return Comment(
+      id: _asString(json['CID'] ?? json['cid'] ?? json['id']),
+      content: _asString(json['content']),
+      aid: json['AID']?.toString(),
+      albumName: json['name'] is String ? json['name'] as String : null,
+      name: json['name'] is String ? json['name'] as String : null,
+      nickname: json['nickname'] is String ? json['nickname'] as String : null,
+      username: json['username'] is String ? json['username'] as String : null,
+      photo: json['photo'] is String ? json['photo'] as String : null,
+      addTime: json['addtime'] is String ? json['addtime'] as String : null,
+      likes: _asInt(json['likes']) ?? 0,
+      spoiler: rawSpoiler == '1' || rawSpoiler == 1 || rawSpoiler == true,
+      replies: replies,
+    );
+  }
+}
+
+class DailyRecord {
+  const DailyRecord({
+    required this.date,
+    required this.signed,
+    required this.bonus,
+  });
+
+  final String date;
+  final bool signed;
+  final bool bonus;
+
+  factory DailyRecord.fromJson(Map<String, dynamic> json) {
+    final rawSigned = json['signed'];
+    final rawBonus = json['bonus'];
+    return DailyRecord(
+      date: _asString(json['date']),
+      signed: rawSigned == true || rawSigned == '1' || rawSigned == 1,
+      bonus: rawBonus == true || rawBonus == '1' || rawBonus == 1,
+    );
+  }
+}
+
+class DailySignIn {
+  const DailySignIn({
+    required this.dailyId,
+    required this.eventName,
+    required this.currentProgress,
+    required this.threeDaysCoin,
+    required this.records,
+  });
+
+  final String dailyId;
+  final String eventName;
+  final int currentProgress;
+  final int threeDaysCoin;
+  final List<DailyRecord> records;
+
+  factory DailySignIn.fromJson(Map<String, dynamic> json) {
+    final rawRecords = json['record'];
+    final records = <DailyRecord>[];
+    if (rawRecords is List) {
+      for (final item in rawRecords) {
+        if (item is Map) {
+          records.add(DailyRecord.fromJson(Map<String, dynamic>.from(item)));
+        } else if (item is List) {
+          for (final inner in item) {
+            if (inner is Map) {
+              records.add(
+                DailyRecord.fromJson(Map<String, dynamic>.from(inner)),
+              );
+            }
+          }
+        }
+      }
+    }
+    return DailySignIn(
+      dailyId: _asString(json['daily_id']),
+      eventName: json['event_name'] is String
+          ? json['event_name'] as String
+          : '每日签到',
+      currentProgress: _asInt(json['currentProgress']) ?? 0,
+      threeDaysCoin: _asInt(json['three_days_coin']) ?? 0,
+      records: records,
+    );
+  }
+}
+
+class FavoriteFolder {
+  const FavoriteFolder({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory FavoriteFolder.fromJson(Map<String, dynamic> json) => FavoriteFolder(
+    id: _asString(json['id'] ?? json['folder_id']),
+    name: _asString(json['name']),
+  );
+}
+
+class FavoritesData {
+  const FavoritesData({
+    required this.items,
+    required this.folders,
+    required this.total,
+    required this.hasMore,
+    this.sourceCount = 0,
+    this.scope = '',
+  });
+
+  final List<AlbumCard> items;
+  final List<FavoriteFolder> folders;
+  final int total;
+  final bool hasMore;
+  final int sourceCount;
+  final String scope;
+
+  factory FavoritesData.fromJson(Map<String, dynamic> json) {
+    final content = json['list'] ?? json['content'];
+    final items = <AlbumCard>[];
+    if (content is List) {
+      for (final item in content) {
+        if (item is Map) {
+          items.add(AlbumCard.fromJson(Map<String, dynamic>.from(item)));
+        }
+      }
+    }
+    final total = _asInt(json['total']) ?? items.length;
+    final sourceCount = _asInt(json['source_count']) ?? 0;
+    final folderRaw = json['folder_list'];
+    final folders = <FavoriteFolder>[];
+    if (folderRaw is List) {
+      for (final item in folderRaw) {
+        if (item is Map) {
+          final id = _asString(item['id'] ?? item['folder_id']);
+          folders.add(
+            FavoriteFolder(
+              id: id,
+              name: _asString(item['name'] ?? (id == '0' ? '全部收藏' : '')),
+            ),
+          );
+        }
+      }
+    } else if (folderRaw is Map) {
+      folderRaw.forEach((id, name) {
+        folders.add(FavoriteFolder(id: id.toString(), name: name.toString()));
+      });
+    }
+    if (folders.isEmpty) {
+      folders.insert(0, const FavoriteFolder(id: '0', name: '全部收藏'));
+    }
+    return FavoritesData(
+      items: items,
+      folders: folders,
+      total: total,
+      hasMore: items.length < total,
+      sourceCount: sourceCount,
+      scope: _asString(json['scope']),
+    );
+  }
+}
+
+class HistoryData {
+  const HistoryData({
+    required this.items,
+    required this.total,
+    required this.hasMore,
+    this.sourceCount = 0,
+    this.scope = '',
+  });
+
+  final List<AlbumCard> items;
+  final int total;
+  final bool hasMore;
+  final int sourceCount;
+  final String scope;
+
+  factory HistoryData.fromMap(Map<String, dynamic> json) {
+    final content = json['list'] ?? json['content'];
+    final items = <AlbumCard>[];
+    if (content is List) {
+      for (final item in content) {
+        if (item is Map) {
+          items.add(AlbumCard.fromJson(Map<String, dynamic>.from(item)));
+        }
+      }
+    }
+    final total = _asInt(json['total']) ?? items.length;
+    final sourceCount = _asInt(json['source_count']) ?? 0;
+    return HistoryData(
+      items: items,
+      total: total,
+      hasMore: items.length < total || (sourceCount > 0 && items.length >= 20),
+      sourceCount: sourceCount,
+      scope: _asString(json['scope']),
+    );
+  }
+}
+
 String _asString(dynamic value) {
   if (value == null) return '';
   if (value is String) return value;

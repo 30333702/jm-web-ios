@@ -84,12 +84,171 @@ class _HomePageState extends State<HomePage> {
       child: ListView(
         padding: const EdgeInsets.only(bottom: 16),
         children: [
-          for (final section in _sections)
+          if (_sections.isNotEmpty && _sections.first.items.isNotEmpty) ...[
+            _HeroCarousel(
+              items: _sections.first.items,
+              onTap: (album) => AlbumPage.open(context, album),
+            ),
+            const SizedBox(height: 6),
+          ],
+          for (final section in _sections.skip(1))
             _HomeSectionBlock(
               section: section,
               onMore: () => _openMore(section),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _HeroCarousel extends StatefulWidget {
+  const _HeroCarousel({required this.items, required this.onTap});
+
+  final List<AlbumCard> items;
+  final ValueChanged<AlbumCard> onTap;
+
+  @override
+  State<_HeroCarousel> createState() => _HeroCarouselState();
+}
+
+class _HeroCarouselState extends State<_HeroCarousel> {
+  final PageController _controller = PageController();
+  int _index = 0;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      height: 236,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _controller,
+            itemCount: widget.items.length,
+            onPageChanged: (index) => setState(() => _index = index),
+            itemBuilder: (context, index) =>
+                _HeroCard(album: widget.items[index], onTap: widget.onTap),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 14,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                for (var i = 0; i < widget.items.length; i++)
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: i == _index ? 18 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: i == _index
+                          ? scheme.primary
+                          : scheme.onSurface.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroCard extends StatelessWidget {
+  const _HeroCard({required this.album, required this.onTap});
+
+  final AlbumCard album;
+  final ValueChanged<AlbumCard> onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 22),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            AlbumCover(url: ApiClient.instance.albumCoverUrl(album)),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.72),
+                  ],
+                ),
+              ),
+            ),
+            Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => onTap(album),
+                child: Padding(
+                  padding: const EdgeInsets.all(14),
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          album.name,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                height: 1.2,
+                              ),
+                        ),
+                        if (album.author.isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            album.author,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.82),
+                                ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Chip(
+                          label: const Text('立即阅读'),
+                          backgroundColor: scheme.primary,
+                          labelStyle: TextStyle(
+                            color: scheme.onPrimary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          side: BorderSide.none,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

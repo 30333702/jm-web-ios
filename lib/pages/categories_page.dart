@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/models.dart';
 import '../services/api_client.dart';
 import 'album_list_page.dart';
+import 'category_detail_page.dart';
 
 class CategoriesPage extends StatefulWidget {
   const CategoriesPage({super.key});
@@ -12,13 +13,13 @@ class CategoriesPage extends StatefulWidget {
 }
 
 class _CategoriesPageState extends State<CategoriesPage> {
-  static const categoryOrders = [
-    ['', '最新'],
-    ['tf', '最多爱心'],
-    ['mv', '总排行'],
-    ['mv_m', '月排行'],
-    ['mv_w', '周排行'],
-    ['mv_t', '日排行'],
+  static const _rankOrders = [
+    ['', '最新', Icons.new_releases_outlined],
+    ['tf', '最多爱心', Icons.favorite_outline],
+    ['mv', '总排行', Icons.emoji_events_outlined],
+    ['mv_w', '周排行', Icons.calendar_view_week_outlined],
+    ['mv_t', '日排行', Icons.today_outlined],
+    ['mv_m', '月排行', Icons.calendar_month_outlined],
   ];
 
   List<CategoryInfo> _categories = const [];
@@ -57,39 +58,12 @@ class _CategoriesPageState extends State<CategoriesPage> {
     }
   }
 
-  void _openCategory(CategoryInfo category) {
-    final isSlug = category.slug.isNotEmpty || category.id == '0';
+  void _openRanking(String order, String title) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => AlbumListPage(
-          title: category.name,
-          loadPage: (page) => isSlug
-              ? ApiClient.instance.fetchCategory(category.slug, 'mr', page)
-              : ApiClient.instance.search(category.name, 'mr', page),
-        ),
-      ),
-    );
-  }
-
-  void _openCombined(CategoryInfo category, SubCategory sub) {
-    final combined = '${category.slug}_${sub.slug}';
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AlbumListPage(
-          title: '${category.name} · ${sub.name}',
-          loadPage: (page) =>
-              ApiClient.instance.fetchCategory(combined, '', page),
-        ),
-      ),
-    );
-  }
-
-  void _openTag(String tag) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AlbumListPage(
-          title: tag,
-          loadPage: (page) => ApiClient.instance.search(tag, 'mr', page),
+          title: title,
+          loadPage: (page) => ApiClient.instance.fetchCategory(order, '', page),
         ),
       ),
     );
@@ -112,111 +86,201 @@ class _CategoriesPageState extends State<CategoriesPage> {
         ),
       );
     }
+    final tags = _tags.expand((block) => block.content).take(24).toList();
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(14, 8, 14, 20),
+        padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
         children: [
           const _SectionTitle('排行榜'),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
+          const SizedBox(height: 10),
+          GridView.count(
+            crossAxisCount: 3,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 1.35,
             children: [
-              for (final order in categoryOrders)
-                ActionChip(
-                  label: Text(order[1]),
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => AlbumListPage(
-                        title: order[1],
-                        loadPage: (page) => ApiClient.instance.fetchCategory(
-                          order[0],
-                          '',
-                          page,
-                        ),
-                      ),
-                    ),
-                  ),
-                  visualDensity: VisualDensity.compact,
+              for (final order in _rankOrders)
+                _RankCard(
+                  title: order[1] as String,
+                  icon: order[2] as IconData,
+                  onTap: () =>
+                      _openRanking(order[0] as String, order[1] as String),
                 ),
             ],
           ),
           const SizedBox(height: 22),
           const _SectionTitle('主分类'),
-          const SizedBox(height: 4),
-          for (final category in _categories) _buildCategoryTile(category),
-          if (_tags.isNotEmpty) ...[
-            const SizedBox(height: 20),
-            const _SectionTitle('热门标签'),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final block in _tags)
-                  for (final tag in block.content)
-                    ActionChip(
-                      label: Text(tag),
-                      onPressed: () => _openTag(tag),
-                      visualDensity: VisualDensity.compact,
-                    ),
-              ],
+          const SizedBox(height: 10),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: _categories.length,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              childAspectRatio: 2.45,
             ),
+            itemBuilder: (context, index) {
+              final category = _categories[index];
+              return _MainCategoryCard(
+                category: category,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => CategoryDetailPage(
+                        category: category,
+                        title: category.name,
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          if (tags.isNotEmpty) ...[
+            const SizedBox(height: 22),
+            const _SectionTitle('热门标签'),
+            const SizedBox(height: 10),
+            _TagCloud(tags: tags),
           ],
         ],
       ),
     );
   }
+}
 
-  Widget _buildCategoryTile(CategoryInfo category) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: CircleAvatar(
-            radius: 18,
-            backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
-            child: Text(
-              category.name.substring(0, 1),
+class _RankCard extends StatelessWidget {
+  const _RankCard({
+    required this.title,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String title;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 25, color: scheme.primary),
+            const SizedBox(height: 6),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
             ),
-          ),
-          title: Text(
-            category.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: category.totalAlbums == null || category.totalAlbums == '0'
-              ? null
-              : Text(
-                  '${category.totalAlbums} 本',
-                  style: const TextStyle(fontSize: 12),
-                ),
-          trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-          onTap: () => _openCategory(category),
+          ],
         ),
-        if (category.subCategories.isNotEmpty && category.slug.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ActionChip(
-                  label: const Text('全部'),
-                  onPressed: () => _openCategory(category),
-                  visualDensity: VisualDensity.compact,
-                ),
-                for (final sub in category.subCategories)
-                  ActionChip(
-                    label: Text(sub.name),
-                    onPressed: () => _openCombined(category, sub),
-                    visualDensity: VisualDensity.compact,
+      ),
+    );
+  }
+}
+
+class _MainCategoryCard extends StatelessWidget {
+  const _MainCategoryCard({required this.category, required this.onTap});
+
+  final CategoryInfo category;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final count = category.totalAlbums == null || category.totalAlbums == '0'
+        ? ''
+        : '${category.totalAlbums} 部';
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 19,
+                backgroundColor: scheme.primary.withValues(alpha: 0.16),
+                child: Text(
+                  category.name.isEmpty ? '?' : category.name.substring(0, 1),
+                  style: TextStyle(
+                    color: scheme.primary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
                   ),
-              ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      category.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    if (count.isNotEmpty)
+                      Text(
+                        count,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, size: 20, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _TagCloud extends StatelessWidget {
+  const _TagCloud({required this.tags});
+
+  final List<String> tags;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final tag in tags)
+          ActionChip(
+            label: Text(tag),
+            visualDensity: VisualDensity.compact,
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => AlbumListPage(
+                  title: tag,
+                  loadPage: (page) =>
+                      ApiClient.instance.search(tag, 'mr', page),
+                ),
+              ),
             ),
           ),
       ],
@@ -235,7 +299,7 @@ class _SectionTitle extends StatelessWidget {
       title,
       style: Theme.of(
         context,
-      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+      ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
     );
   }
 }

@@ -46,7 +46,7 @@ class ApiClient {
     return headers;
   }
 
-  Future<dynamic> _request(
+  Future<Map<String, dynamic>> _requestPayload(
     String method,
     String path, {
     Map<String, dynamic>? query,
@@ -70,7 +70,7 @@ class ApiClient {
             .timeout(const Duration(seconds: 70));
       }
     } catch (error) {
-      throw ApiException('网络连接失败：$error');
+      throw ApiException(_networkErrorMessage(error));
     }
     await _captureCookie(response);
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -88,6 +88,21 @@ class ApiClient {
         needAuth: payload['needAuth'] == true,
       );
     }
+    return payload;
+  }
+
+  Future<dynamic> _request(
+    String method,
+    String path, {
+    Map<String, dynamic>? query,
+    Object? body,
+  }) async {
+    final payload = await _requestPayload(
+      method,
+      path,
+      query: query,
+      body: body,
+    );
     return payload['data'];
   }
 
@@ -105,11 +120,7 @@ class ApiClient {
   Future<void> _captureCookie(http.Response response) async {
     final raw = response.headers['set-cookie'];
     if (raw == null || raw.isEmpty) return;
-    final match = RegExp(r'jmw_auth=([^;,]+)').firstMatch(raw);
-    if (match == null) return;
-    final cookie = 'jmw_auth=${match.group(1)}';
-    if (cookie == _cookie) return;
-    await auth.setCookie(cookie);
+    await auth.mergeSetCookie(raw);
   }
 
   String _errorMessage(http.Response response) {
@@ -128,19 +139,142 @@ class ApiClient {
     return <String, dynamic>{'data': decoded};
   }
 
+  String _networkErrorMessage(Object error) {
+    final text = error.toString();
+    if (text.contains('No route to host') || text.contains('errno 65')) {
+      return '网络连接失败：无法到达 $baseUrl。请确认服务器地址可访问，并允许 App 的“本地网络”权限。';
+    }
+    if (text.contains('Connection refused') || text.contains('Connection reset')) {
+      return '网络连接失败：服务器拒绝了连接，请确认服务已启动且地址可访问。';
+    }
+    return '网络连接失败：$text';
+  }
+
   Future<void> login(String rawBaseUrl, String password) async {
     final normalized = AuthStore.normalize(rawBaseUrl);
     await auth.setBase(normalized);
     try {
-      await _request('POST', '/api/auth', body: {'password': password});
-      await auth.persist();
+      if (password.trim().isEmpty) {
+        // 服务器未开启访问口令时，只需要记住地址即可进入。
+        await auth.persist();
+      } else {
+        await _requestPayload('POST', '/api/auth', body: {'password': password});
+        await auth.persist();
+      }
     } catch (_) {
       await auth.clear();
       rethrow;
     }
   }
 
-  Future<void> logout() => auth.clear();
+  Future<void> connect(String rawBaseUrl) async {
+    await auth.setBase(AuthStore.normalize(rawBaseUrl));
+    await auth.persist();
+  }
+
+  Future<void> loginJm(String username, String password) async {
+    final payload = await _requestPayload(
+      'POST',
+      '/api/login',
+      body: {'username': username, 'password': password},
+    );
+    final raw = payload['data'];
+    if (raw is! Map) {
+      throw ApiException('登录返回的用户资料格式异常');
+    }
+    await auth.persist();
+    UserProfile.fromJson(Map<String, dynamic>.from(raw));
+  }
+
+  Future<UserProfile?> fetchMe() async {
+    final payload = await _requestPayload('GET', '/api/me');
+    final raw = payload['user'];
+    if (raw is Map) {
+      return UserProfile.fromJson(Map<String, dynamic>.from(raw));
+    }
+    return null;
+  }
+
+  Future<void> logoutJm() async {
+    try {
+      await _requestPayload('POST', '/api/logout');
+    } catch (_) {
+      // 本地会话仍然要清理，即使服务端已离线。
+    }
+    await auth.removeCookie('jmw_sid');
+  }
+
+  Future<void> logout() async {
+    try {
+      await _requestPayload('POST', '/api/logout');
+    } catch (_) {
+      // 本地会话仍然要清理，即使服务端已离线。
+    }
+    await auth.clear();
+  }
+
+  Future<DailySignIn> fetchDaily(String userId) async {
+    final data = await _request(
+      'GET',
+      '/api/daily',
+      query: {'user_id': userId},
+    );
+    return DailySignIn.fromJson(_asMap(data));
+  }
+
+  Future<Map<String, dynamic>> dailyCheckIn(String userId, String dailyId) async {
+    final payload = await _requestPayload(
+      'POST',
+      '/api/daily_chk',
+      body: {'user_id': userId, 'daily_id': dailyId},
+    );
+    return Map<String, dynamic>.from(payload);
+  }
+
+  Future<PagedComments> fetchComments(String aid, int page) async {
+    final data = await _request(
+      'GET',
+      '/api/comments',
+      query: {'aid': aid, 'page': page},
+    );
+    return PagedComments.fromJson(_asMap(data));
+  }
+
+  Future<PagedComments> fetchUserComments(String uid, int page) async {
+    final data = await _request(
+      'GET',
+      '/api/user_comments',
+      query: {'uid': uid, 'page': page},
+    );
+    return PagedComments.fromJson(_asMap(data));
+  }
+
+  Future<void> publishComment(
+    String aid,
+    String content,
+    String status, [
+    String? commentId,
+  ]) async {
+    await _requestPayload(
+      'POST',
+      '/api/comment',
+      body: {
+        'aid': aid,
+        'content': content,
+        'status': status,
+        if (commentId != null && commentId.isNotEmpty)
+          'comment_id': commentId,
+      },
+    );
+  }
+
+  Future<void> voteComment(String commentId, {String voteType = 'up'}) async {
+    await _requestPayload(
+      'POST',
+      '/api/comment_vote',
+      body: {'comment_id': commentId, 'vote_type': voteType},
+    );
+  }
 
   Future<List<HomeSection>> fetchHome() async {
     final data = await _request('GET', '/api/home');
@@ -253,6 +387,62 @@ class ApiClient {
     return list.map((e) => AlbumCard.fromJson(_asMap(e))).toList();
   }
 
+  Future<FavoritesData> fetchFavoritesData({
+    String order = 'mr',
+    int page = 1,
+    String folderId = '0',
+  }) async {
+    final payload = await _requestPayload(
+      'GET',
+      '/api/favorites',
+      query: {'o': order, 'page': page, 'folder_id': folderId},
+    );
+    final raw = _asMap(payload['data'] ?? payload);
+    raw['scope'] = payload['scope'] ?? raw['scope'];
+    return FavoritesData.fromJson(raw);
+  }
+
+  Future<void> favoriteFolder(
+    String type, {
+    String folderId = '',
+    String folderName = '',
+    String aid = '',
+  }) async {
+    final payload = await _requestPayload(
+      'POST',
+      '/api/favorite_folder',
+      body: {
+        'type': type,
+        'folder_id': folderId,
+        'folder_name': folderName,
+        'aid': aid,
+      },
+    );
+    final status = (payload['data'] is Map)
+        ? _asMap(payload['data'])['status']?.toString().toLowerCase()
+        : '';
+    if (status != null &&
+        status.isNotEmpty &&
+        !['ok', 'success', 'true', '1'].contains(status)) {
+      throw ApiException(
+        _asMap(payload['data'])['msg']?.toString() ?? '收藏夹操作失败',
+      );
+    }
+  }
+
+  Future<HistoryData> fetchHistory(int page) async {
+    final payload = await _requestPayload('GET', '/api/history', query: {
+      'page': page,
+    });
+    final raw = _asMap(payload['data'] ?? payload);
+    raw['scope'] = payload['scope'] ?? raw['scope'];
+    return HistoryData.fromMap(raw);
+  }
+
+  Future<void> deleteHistory(String id) async {
+    await _requestPayload('POST', '/api/history/delete', body: {'id': id});
+  }
+
   Future<void> toggleLike(String albumId, bool liked) async {
     await _request('POST', '/api/like', query: {'id': albumId});
   }
@@ -318,6 +508,17 @@ class ApiClient {
     }
     if (value.startsWith('//')) return _proxyImageUrl(u: 'https:$value');
     return _proxyImageUrl(u: value);
+  }
+
+  String avatarImageUrl(String? photo) {
+    final value = (photo ?? '').trim();
+    if (value.isEmpty) return '';
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return _proxyImageUrl(u: value);
+    }
+    if (value.startsWith('//')) return _proxyImageUrl(u: 'https:$value');
+    if (value.startsWith('/')) return _proxyImageUrl(path: value);
+    return _proxyImageUrl(path: '/$value');
   }
 
   String _proxyImageUrl({String? path, String? u}) {

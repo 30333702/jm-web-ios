@@ -14,7 +14,9 @@ class AuthStore extends ChangeNotifier {
   String? get cookie => _cookie;
 
   bool get hasSession =>
-      (_baseUrl?.isNotEmpty ?? false) && (_cookie?.isNotEmpty ?? false);
+      (_baseUrl?.isNotEmpty ?? false);
+
+  bool get hasJmSession => _cookie?.contains('jmw_sid=') ?? false;
 
   Future<void> load() async {
     _prefs = await SharedPreferences.getInstance();
@@ -46,6 +48,37 @@ class AuthStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> mergeSetCookie(String rawSetCookie) async {
+    final cookies = _cookieMap();
+    final auth = RegExp(
+      r'(jmw_auth|jmw_sid)=([^;,\s]+)',
+      caseSensitive: false,
+    ).allMatches(rawSetCookie);
+    var changed = false;
+    for (final match in auth) {
+      final name = match.group(1)!.toLowerCase();
+      final value = match.group(2) ?? '';
+      if (value.isEmpty) {
+        if (cookies.remove(name) != null) changed = true;
+      } else if (cookies[name] != value) {
+        cookies[name] = value;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    _cookie = cookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
+    await _persist();
+    notifyListeners();
+  }
+
+  Future<void> removeCookie(String name) async {
+    final cookies = _cookieMap();
+    if (cookies.remove(name.toLowerCase()) == null) return;
+    _cookie = cookies.entries.map((e) => '${e.key}=${e.value}').join('; ');
+    await _persist();
+    notifyListeners();
+  }
+
   Future<void> clear() async {
     _baseUrl = null;
     _cookie = null;
@@ -62,6 +95,19 @@ class AuthStore extends ChangeNotifier {
     if (_cookie != null) {
       await _prefs!.setString(_cookieKey, _cookie!);
     }
+  }
+
+  Map<String, String> _cookieMap() {
+    final map = <String, String>{};
+    if (_cookie == null) return map;
+    for (final part in _cookie!.split(';')) {
+      final index = part.indexOf('=');
+      if (index <= 0) continue;
+      final name = part.substring(0, index).trim().toLowerCase();
+      final value = part.substring(index + 1).trim();
+      if (name.isNotEmpty) map[name] = value;
+    }
+    return map;
   }
 
   static String normalize(String input) {

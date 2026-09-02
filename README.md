@@ -62,3 +62,5 @@
 登录成功后客户端会保存服务端下发的 `jmw_auth` Cookie；切换服务器时先在“我的”退出登录，再重新登录。
 
 客户端已为 HTTP 局域网地址开启 iOS 的 `NSAllowsArbitraryLoads`，但正式上架 App Store 前应改为 HTTPS 并移除该放宽项。
+
+iOS 14 及以上首次连接局域网服务器时需要允许“本地网络”权限；如果出现 `No route to host (errno 65)`，请确认 iPhone 与服务器处于同一 Wi-Fi、Windows 防火墙已放行 TCP 3210，并重新允许本地网络访问。
