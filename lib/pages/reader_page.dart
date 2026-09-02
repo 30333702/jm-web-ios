@@ -257,7 +257,8 @@ class _ReaderPageState extends State<ReaderPage> {
     final item = chapter.images[index];
     final sourceUrl = ApiClient.instance.chapterImageUrl(item.url);
     var bytes = await ApiClient.instance.fetchImage(sourceUrl);
-    final photoId = int.tryParse(chapter.albumId) ?? 0;
+    final photoId =
+        int.tryParse(widget.chapterId) ?? int.tryParse(chapter.albumId) ?? 0;
     if (photoId > 0 &&
         needsScramble(
           photoId: photoId,
